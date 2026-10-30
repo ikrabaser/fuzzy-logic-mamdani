@@ -1,0 +1,4 @@
+numpy
+matplotlib
+# Yalnızca testlerdeki isteğe bağlı çapraz kontrol için (kurulu değilse o testler atlanır):
+# scikit-fuzzy
