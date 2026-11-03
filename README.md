@@ -2,12 +2,13 @@
 
 Türkçe | [English](README.en.md)
 
-Mamdani tipi bulanık çıkarım sistemini baştan sona gösteren bir proje: üyelik fonksiyonları, kural değerlendirme, kırpma, birleştirme ve beş durulaştırma yöntemi. İki örnek problemin her adımı elle hesaplanır, aynı hesabı tekrar eden Python kodu ve genel bir Mamdani motoru vardır.
+Mamdani tipi bulanık çıkarım sistemini baştan sona gösteren bir proje: üyelik fonksiyonları, kural değerlendirme, kırpma, birleştirme ve beş durulaştırma yöntemi. Üç örnek problemin her adımı elle hesaplanır, aynı hesabı tekrar eden Python kodu ve genel bir Mamdani motoru vardır.
 
 | Örnek | Sistem | Girdi |
 |---|---|---|
 | 1 | Tek girdili, 3 kurallı Mamdani modeli (yamuk kümeler) | x = -3,9 |
 | 2 | İki girdili kontrolcü, 4 kural (Gauss, üçgen ve yamuk kümeler) | x = 55, y = 45 |
+| 3 | Sıcaklık → fan hızı, 2 kural (üçgen kümeler); ayrıca Sugeno karşılaştırması | x = 28 (ve 33) |
 
 ## Dosyalar
 
@@ -17,8 +18,12 @@ Mamdani tipi bulanık çıkarım sistemini baştan sona gösteren bir proje: üy
 | [`ornekler.py`](ornekler.py) | İki örneğin üyelik fonksiyonları ve kuralları (tek yerde) |
 | [`tek_girdili_el_hesabi.py`](tek_girdili_el_hesabi.py) | Örnek 1'in el hesabını adım adım yazdırır |
 | [`kontrolcu_el_hesabi.py`](kontrolcu_el_hesabi.py) | Örnek 2'nin el hesabını adım adım yazdırır |
+| [`fan_hizi_ornegi.py`](fan_hizi_ornegi.py) | Örnek 3'ün el hesabını adım adım yazdırır |
+| [`sugeno_ornegi.py`](sugeno_ornegi.py) | Aynı sistemin Sugeno çözümü ve Mamdani ile karşılaştırma tablosu |
+| [`alistirma.py`](alistirma.py) | Rastgele sorular soran alıştırma modu |
 | [`gorseller_uret.py`](gorseller_uret.py) | `gorseller/` altındaki PNG'leri üretir |
 | [`test_el_hesaplari.py`](test_el_hesaplari.py) | Bu README'deki sayıların kodla tuttuğunu denetler |
+| [`test_sugeno.py`](test_sugeno.py), [`test_alistirma.py`](test_alistirma.py) | Sugeno ve alıştırma modu testleri |
 
 ## Çalıştırma
 
@@ -27,9 +32,14 @@ pip install -r requirements.txt
 
 python tek_girdili_el_hesabi.py
 python kontrolcu_el_hesabi.py
+python fan_hizi_ornegi.py 28     # Örnek 3; başka sıcaklık da verilebilir
+python sugeno_ornegi.py
+python alistirma.py
 
 python gorseller_uret.py        # görselleri yeniden üret
 python test_el_hesaplari.py     # veya: pytest
+python test_sugeno.py
+python test_alistirma.py
 ```
 
 Bu README'deki her sayı yukarıdaki scriptlerin çıktısıdır. `scikit-fuzzy` kuruluysa testler durulaştırma sonuçlarını o kütüphaneyle de çapraz kontrol eder (isteğe bağlı).
@@ -294,7 +304,125 @@ HIGH sol kenar    (z-50)/30 = 0.8825  ->  z = 76.4749
 
 ---
 
-## 6. Durulaştırma yöntemleri
+## 6. Örnek 3: sıcaklık → fan hızı (2 kural)
+
+En küçük tam örnek: tek girdi, iki kural, üçgen kümeler. Aşağıdaki her adım [`fan_hizi_ornegi.py`](fan_hizi_ornegi.py) çıktısıyla aynıdır (`python fan_hizi_ornegi.py 28`).
+
+Girdi (sıcaklık, °C), üçgen `(başlangıç, tepe, bitiş)`: Ilık = (15, 25, 35), Sıcak = (25, 35, 45).
+Çıkış (fan hızı, 0-100): Orta = (30, 50, 70), Hızlı = (50, 75, 100).
+
+1. EĞER sıcaklık **Ilık** İSE hız **Orta**
+2. EĞER sıcaklık **Sıcak** İSE hız **Hızlı**
+
+![Üyelik fonksiyonları](gorseller/07_ornek3_uyelik_fonksiyonlari.png)
+
+Girdi x = 28 °C.
+
+### Adım 1: Bulanıklaştırma
+
+Önce x'in tepenin solunda mı sağında mı olduğuna bakılır. Solundaysa yükselen, sağındaysa alçalan kenar kullanılır.
+
+- Ilık (15, **25**, 35): 28 > 25, alçalan kenar → (35 − 28) / (35 − 25) = 7/10 = **0,7**
+- Sıcak (25, **35**, 45): 28 < 35, yükselen kenar → (28 − 25) / (35 − 25) = 3/10 = **0,3**
+
+Yükselen kenarda payda `tepe − başlangıç`, pay `x − başlangıç`; alçalan kenarda payda `bitiş − tepe`, pay `bitiş − x`. Her iki durumda da pay, x'in kenarın "sıfır ucundan" uzaklığıdır, payda ise kenarın toplam genişliği.
+
+### Adım 2: Kural değerlendirme
+
+Her kuralda tek koşul var, bu yüzden ateşleme gücü üyelik derecesinin kendisidir: w₁ = 0,7 ve w₂ = 0,3. İki koşul olsaydı VE için `min`, VEYA için `max` alınırdı (Örnek 2).
+
+### Adım 3: Çıkarım (kırpma)
+
+Çıkış kümesi ateşleme gücü seviyesinden kesilir. Kesme çizgisinin kenarlara çarptığı noktalar `sol = başlangıç + w·(tepe − başlangıç)` ve `sağ = bitiş − w·(bitiş − tepe)` ile bulunur.
+
+- Orta, w₁ = 0,7: sol = 30 + 0,7·20 = **44**, sağ = 70 − 0,7·20 = **56**. Köşeler: (30, 0) → (44, 0,7) → (56, 0,7) → (70, 0)
+- Hızlı, w₂ = 0,3: sol = 50 + 0,3·25 = **57,5**, sağ = 100 − 0,3·25 = **92,5**. Köşeler: (50, 0) → (57,5, 0,3) → (92,5, 0,3) → (100, 0)
+
+### Adım 4: Birleştirme
+
+Her y noktasında iki kırpılmış kümeden büyük olan alınır. Orta'nın alçalan kenarı 0,3 seviyesine `(70 − y) / 20 = 0,3 → y = 64` noktasında iner; o noktadan sonra Hızlı'nın platosu baskın olur.
+
+Birleşik küme köşeleri: `(30, 0) → (44, 0,7) → (56, 0,7) → (64, 0,3) → (92,5, 0,3) → (100, 0)`
+
+![Kırpma ve birleştirme](gorseller/08_ornek3_kirpma_ve_birlestirme.png)
+
+### Adım 5: Durulaştırma
+
+Maksimum üyelik 0,7, plato 44 ile 56 arasında.
+
+| Yöntem | Ne yapar | Sonuç |
+|---|---|---|
+| SOM | maksimumların en küçüğü | 44 |
+| MOM | maksimumların ortalaması (44 + 56) / 2 | 50 |
+| LOM | maksimumların en büyüğü | 56 |
+| BOA | alanı iki eşit parçaya böler | ≈ 56,2705 |
+| COA | alanın ağırlık merkezi | ≈ 60,2970 |
+
+Şekil parçalara bölünerek centroid:
+
+| Parça | Alan | Merkez | Alan × merkez |
+|---|---|---|---|
+| üçgen (30-44) | 4,9 | 39,333 | 192,733 |
+| dikdörtgen (44-56) | 8,4 | 50 | 420 |
+| dikdörtgen (56-64, yükseklik 0,3) | 2,4 | 60 | 144 |
+| üçgen (56-64, yükseklik 0,4) | 1,6 | 58,667 | 93,867 |
+| dikdörtgen (64-92,5) | 8,55 | 78,25 | 669,038 |
+| üçgen (92,5-100) | 1,125 | 95 | 106,875 |
+| **Toplam** | **26,975** | | **1626,513** |
+
+COA = 1626,513 / 26,975 ≈ **60,297**
+
+BOA için toplam alan 26,975, yarısı 13,4875. Soldan alan biriktirilirse y = 56'ya kadar 4,9 + 8,4 = 13,3 olur. Eksik 0,1875 alan, 56'nın hemen sağındaki eğimli parçada tamamlanır: `0,7·t − 0,025·t² = 0,1875` denkleminden t ≈ 0,2705, yani **y ≈ 56,2705**.
+
+![Durulaştırma](gorseller/09_ornek3_durulastirma.png)
+
+**Yorum:** COA, MOM'dan büyük çıktı çünkü sağdaki uzun 0,3'lük basamak ağırlık merkezini sağa çekiyor. SOM, MOM ve LOM yalnızca en tepedeki platoya baktığı için bu basamağı görmez; COA ve BOA ise şeklin tamamını hesaba katar.
+
+### Başka sıcaklıklar
+
+| Girdi | w₁ (Ilık) | w₂ (Sıcak) | SOM | MOM | LOM | BOA | COA |
+|---|---|---|---|---|---|---|---|
+| x = 28 | 0,7 | 0,3 | 44 | 50 | 56 | 56,2705 | 60,2970 |
+| x = 33 | 0,2 | 0,8 | 70 | 75 | 80 | 72,4375 | 70,2242 |
+
+x = 33'te Hızlı daha güçlü ateşlendiği için maksimum plato Hızlı'nın 0,8 seviyesindeki kesiğine (70 ile 80 arası) düşer ve SOM, MOM, LOM bu platodan okunur.
+
+Girdi arttıkça beş yöntemin nasıl hareket ettiği aşağıda. x = 30'da iki kural da 0,5 ile ateşlenir ve maksimum iki ayrı platoya bölünür (40-60 ve 62,5-87,5): SOM = 40, LOM = 87,5, MOM ≈ 63,89 (iki platonun uzunluk ağırlıklı ortalaması). Bu üç yöntem x = 30'un iki yanında sıçrama yapar, grafikte çizgi bu noktada kesildi. COA ve BOA ise süreklidir.
+
+![Yöntem karşılaştırması](gorseller/10_ornek3_yontem_karsilastirma.png)
+
+## 7. Sugeno ile karşılaştırma
+
+[`sugeno_ornegi.py`](sugeno_ornegi.py) aynı kuralları sıfırıncı derece Sugeno modeliyle çözer. Çıkış kümesi yerine her kuralın sonucu bir sabittir (Orta için z₁ = 50, Hızlı için z₂ = 75, yani kümelerin tepeleri) ve çıkış ağırlıklı ortalamadır:
+
+`z = (w₁·z₁ + w₂·z₂) / (w₁ + w₂)`
+
+x = 28 için: z = (0,7·50 + 0,3·75) / (0,7 + 0,3) = 57,5 / 1 = **57,5** (Mamdani COA: 60,297). Kırpma, birleştirme ve integral yoktur.
+
+| x | w₁ | w₂ | Sugeno | Mamdani COA | fark |
+|---|---|---|---|---|---|
+| 20 | 0,5 | 0 | 50 | 50 | 0 |
+| 25 | 1 | 0 | 50 | 50 | 0 |
+| 28 | 0,7 | 0,3 | 57,5 | 60,297 | −2,797 |
+| 30 | 0,5 | 0,5 | 62,5 | 64,423 | −1,923 |
+| 33 | 0,2 | 0,8 | 70 | 70,224 | −0,224 |
+| 35 | 0 | 1 | 75 | 75 | 0 |
+| 40 | 0 | 0,5 | 75 | 75 | 0 |
+
+Sugeno yalnızca tepe noktalarına bakar. Mamdani COA ise kırpılmış kümelerin genişliğini de hesaba katar; Hızlı (50-100) kümesi Orta'dan (30-70) geniş olduğu için iki kural birlikte ateşlendiğinde (25 < x < 35) sonuç Mamdani'de daha büyük çıkar. Tek kural ateşlendiğinde kırpılmış küme kendi tepesi etrafında simetrik olduğundan ikisi aynıdır.
+
+## 8. Alıştırma modu
+
+[`alistirma.py`](alistirma.py) rastgele bir sıcaklık seçer, üyelikleri ve istediğin durulaştırma sonucunu sorar, cevabını kontrol eder ve yanlışta adım adım çözümü gösterir. Sayıları virgül ya da nokta ile yazabilirsin; üyelik cevapları 0,01, durulaştırma cevapları 0,1 toleransla kabul edilir.
+
+```bash
+python alistirma.py                   # 3 rastgele soru
+python alistirma.py --soru 5 --yontem COA
+python alistirma.py --seed 7          # aynı soruları tekrar üret
+python alistirma.py --cozum 28        # x = 28 için çözümü göster, soru sorma
+```
+
+## 9. Durulaştırma yöntemleri
 
 | Yöntem | Ne yapar? | Kodda |
 |---|---|---|
@@ -305,7 +433,7 @@ HIGH sol kenar    (z-50)/30 = 0.8825  ->  z = 76.4749
 | LOM (largest of maxima) | Maksimum olduğu değerlerin en büyüğünü alır. | `maksimumlarin_en_buyugu` |
 | Ağırlıklı ortalama | `Σ wᵢ·zᵢ / Σ wᵢ`. Sugeno tipinde kullanılır. | `agirlikli_ortalama` |
 
-## 7. Notlar ve varsayımlar
+## 10. Notlar ve varsayımlar
 
 - **Örnek 1'in girdi kümeleri.** Kümelerin kesin parametreleri kaynak örnekte yazmıyor, yalnızca şekil var. x = -3,9 için okunan değerleri (Small = 0,3 ve Medium = 0,7) veren yamuklar seçildi: `Small = yamuk(-10, -10, -6, -3)`, `Medium = yamuk(-6, -3, 3, 6)`, `Large = yamuk(3, 6, 10, 10)`.
 - **Örnek 1'in çıkış kümeleri.** Birleşik şeklin köşe noktalarından (1,7518 ; 0,3), (2,1622 ; 0,7), (5,5956 ; 0,7) ve (7 ; 0) geri çıkarıldı: `Medium = yamuk(1.444, 2.47, 4.9937, 7)`, `Small = yamuk(0, 0, 2, 4)`. Large bu girdide ateşlenmediği için sonucu etkilemez.
