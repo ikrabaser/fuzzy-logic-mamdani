@@ -17,6 +17,8 @@ import numpy as np
 from bulanik import YONTEMLER, durulastir, mamdani
 from ornekler import (CIKTI_1, CIKTI_2, GIRDI_1, GIRDI_2, GIRDI_DEGERI_1,
                       GIRDI_DEGERI_2, KURALLAR_1, KURALLAR_2, Y1, Z2)
+from fan_hizi_ornegi import CIKTI as CIKTI_3, GIRDI as GIRDI_3
+from fan_hizi_ornegi import MOTOR_KURALLARI as KURALLAR_3, Y as Y3
 
 KLASOR = "gorseller"
 os.makedirs(KLASOR, exist_ok=True)
@@ -236,3 +238,103 @@ c2.set_xlabel("z")
 c2.set_ylabel("Üyelik derecesi")
 c2.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
 kaydet(fig, "06_ornek2_birlestirme_ve_durulastirma.png")
+
+
+# ==========================================================================
+# 07  Örnek 3: üyelik fonksiyonları (sıcaklık -> fan hızı, x = 28)
+# ==========================================================================
+x3 = 28.0
+sonuc3 = mamdani(GIRDI_3, CIKTI_3, KURALLAR_3, {"sicaklik": x3}, Y3)
+s_cizim = np.linspace(0, 50, 2001)
+h_cizim = np.linspace(0, 100, 2001)
+
+fig, (d1, d2) = plt.subplots(1, 2, figsize=(11, 3.8))
+kumeleri_ciz(d1, GIRDI_3["sicaklik"], s_cizim)
+etiket_yaz(d1, GIRDI_3["sicaklik"], s_cizim, [22, 38])
+d1.axvline(x3, color=YAZI, lw=1, ls="--")
+for ad, mu in sonuc3["uyelikler"]["sicaklik"].items():
+    if mu > 0:
+        d1.plot([x3], [mu], "o", color=YAZI, ms=6, mec=YUZEY, mew=1.5)
+        d1.text(x3 + 0.8, mu, f"{ad} = {mu:.1f}", fontsize=9, va="center")
+d1.set_title("Girdi kümeleri ve x = 28 °C")
+eksen_duzenle(d1, "sıcaklık (°C)")
+kumeleri_ciz(d2, CIKTI_3, h_cizim)
+etiket_yaz(d2, CIKTI_3, h_cizim, [50, 75])
+d2.set_title("Çıkış kümeleri")
+eksen_duzenle(d2, "fan hızı (y)")
+kaydet(fig, "07_ornek3_uyelik_fonksiyonlari.png")
+
+# ==========================================================================
+# 08  Örnek 3: kırpma ve birleştirme
+# ==========================================================================
+fig = plt.figure(figsize=(11, 5.2))
+gs = fig.add_gridspec(2, 2, width_ratios=[1, 1.3], hspace=0.55, wspace=0.22)
+adlar3 = list(CIKTI_3)
+for i in range(2):
+    ax = fig.add_subplot(gs[i, 0])
+    f = CIKTI_3[adlar3[i]]
+    guc = sonuc3["guclerin"][i]
+    ax.plot(h_cizim, f(h_cizim), color=RENK[i], lw=1.2, alpha=0.45)
+    kesik = np.minimum(f(h_cizim), guc)
+    ax.fill_between(h_cizim, kesik, color=RENK[i], alpha=0.35, lw=0)
+    ax.plot(h_cizim, kesik, color=RENK[i], lw=2)
+    ax.axhline(guc, color=YAZI, lw=1, ls="--")
+    ax.text(99, guc + 0.04, f"w{i + 1} = {guc:.1f}", ha="right", fontsize=9)
+    kosul = KURALLAR_3[i]["kosullar"][0][1]
+    ax.set_title(f"Kural {i + 1}: IF {kosul} THEN {KURALLAR_3[i]['sonuc']}")
+    eksen_duzenle(ax, "fan hızı (y)")
+ax = fig.add_subplot(gs[:, 1])
+ax.fill_between(Y3[::500], sonuc3["birlesik"][::500], color=BIRLESIK, alpha=0.25, lw=0)
+ax.plot(Y3[::500], sonuc3["birlesik"][::500], color=BIRLESIK, lw=2)
+for i in range(2):
+    ax.plot(h_cizim, np.minimum(CIKTI_3[adlar3[i]](h_cizim), sonuc3["guclerin"][i]),
+            color=RENK[i], lw=1.2, ls=":")
+for xk, yk, hiza in [(44, 0.7, "right"), (56, 0.7, "left"), (64, 0.3, "left"), (92.5, 0.3, "center")]:
+    ax.plot([xk], [yk], "o", color=YAZI, ms=5, mec=YUZEY, mew=1.2)
+    kayma = {"left": 1, "right": -1, "center": 0}[hiza]
+    ax.text(xk + kayma, yk + 0.05, f"({xk:g} ; {yk:g})", fontsize=8.5, ha=hiza)
+ax.set_title("Birleştirme: iki kırpılmış kümenin max'ı")
+eksen_duzenle(ax, "fan hızı (y)")
+kaydet(fig, "08_ornek3_kirpma_ve_birlestirme.png")
+
+# ==========================================================================
+# 09  Örnek 3: durulaştırma (x = 28)
+# ==========================================================================
+fig, ax = plt.subplots(figsize=(10, 4))
+ax.set_xlim(20, 105)
+ax.set_ylim(-0.03, 1.28)
+satirlar3 = {"LOM": (0, "right"), "BOA": (0, "left"), "MOM": (1, "right"),
+             "COA": (1, "left"), "SOM": (2, "right")}
+durulastirma_ciz(ax, Y3, sonuc3["birlesik"], satirlar3, 1.2)
+ax.set_title("Örnek 3: aynı birleşik küme, beş durulaştırma yöntemi (x = 28 °C)")
+ax.set_xlabel("fan hızı (y)")
+ax.set_ylabel("Üyelik derecesi")
+ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+kaydet(fig, "09_ornek3_durulastirma.png")
+
+# ==========================================================================
+# 10  Örnek 3: x'in her değeri için beş yöntemin çıkışı
+# ==========================================================================
+y_kaba3 = np.linspace(0, 100, 10_001)
+xs3 = np.linspace(16, 44, 113)
+egriler3 = {m: [] for m in YONTEMLER}
+for xv in xs3:
+    s = mamdani(GIRDI_3, CIKTI_3, KURALLAR_3, {"sicaklik": xv}, y_kaba3)
+    for m in YONTEMLER:
+        deger = durulastir(y_kaba3, s["birlesik"], m)
+        # x = 30'da iki kuralın gücü eşit: maksimum yöntemleri burada bir kümeden
+        # ötekine atlar. Atlama çizgisi çizilmesin diye o noktada çizgi kesilir.
+        egriler3[m].append(np.nan if (m in ("MOM", "SOM", "LOM") and xv == 30) else deger)
+
+fig, ax = plt.subplots(figsize=(9, 4.6))
+stil3 = {"COA": ("-", RENK[0]), "BOA": ("--", RENK[1]), "MOM": ("-.", RENK[2]),
+         "SOM": (":", RENK[3]), "LOM": (":", YAZI)}
+for m, (ls, renk) in stil3.items():
+    ax.plot(xs3, egriler3[m], ls=ls, color=renk, lw=2, label=m)
+ax.axvline(x3, color=YAZI_2, lw=1, ls="--")
+ax.text(x3 - 0.3, 96, "x = 28", fontsize=9, color=YAZI_2, ha="right")
+ax.set_title("Örnek 3: x'in her değeri için net çıkış, beş yöntem")
+ax.set_xlabel("sıcaklık x (°C)")
+ax.set_ylabel("fan hızı (y)")
+ax.legend(loc="lower right", ncol=5, frameon=False, fontsize=9)
+kaydet(fig, "10_ornek3_yontem_karsilastirma.png")

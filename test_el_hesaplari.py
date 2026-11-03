@@ -14,6 +14,7 @@ from bulanik import (YONTEMLER, agirlikli_ortalama, birlestir, durulastir, gauss
                      kes, mamdani, ucgen, ve, veya, yamuk)
 from ornekler import (CIKTI_1, CIKTI_2, GIRDI_1, GIRDI_2, GIRDI_DEGERI_1,
                       GIRDI_DEGERI_2, KURALLAR_1, KURALLAR_2, Y1, Z2)
+import fan_hizi_ornegi as fan
 
 # --------------------------------------------------------------------------
 # Üyelik fonksiyonları ve işlemler
@@ -141,6 +142,76 @@ def test_ornek2_mom_ile_som_lom_ortasi_ayni_degil():
     mom = durulastir(Z2, s["birlesik"], "MOM")
     orta = (durulastir(Z2, s["birlesik"], "SOM") + durulastir(Z2, s["birlesik"], "LOM")) / 2
     assert abs(mom - orta) > 5
+
+
+# --------------------------------------------------------------------------
+# Örnek 3: sıcaklık -> fan hızı, tek girdili, 2 kural (x = 28 ve x = 33)
+# --------------------------------------------------------------------------
+
+
+def _fan(x):
+    return mamdani(fan.GIRDI, fan.CIKTI, fan.MOTOR_KURALLARI, {"sicaklik": x}, fan.Y)
+
+
+def test_ornek3_uyelikler_ve_gucler():
+    s = _fan(28.0)
+    u = s["uyelikler"]["sicaklik"]
+    assert math.isclose(u["Ilık"], 0.7)
+    assert math.isclose(u["Sıcak"], 0.3)
+    assert np.allclose(s["guclerin"], [0.7, 0.3])
+
+
+def test_ornek3_uyelik_aciklamasi_kenari_dogru_secer():
+    assert fan.uyelik(28, 15, 25, 35)[0] == 0.7      # tepenin sağı: alçalan kenar
+    assert fan.uyelik(28, 25, 35, 45)[0] == 0.3      # tepenin solu: yükselen kenar
+    assert fan.uyelik(25, 15, 25, 35)[0] == 1.0      # tam tepe
+    assert fan.uyelik(10, 15, 25, 35)[0] == 0.0      # aralığın dışı
+
+
+def test_ornek3_komsu_kumelerin_toplami_1():
+    # 25 ile 35 arasında Ilık ve Sıcak birbirini tamamlar: w1 + w2 = 1
+    for xv in np.linspace(25, 35, 41):
+        s = _fan(float(xv))
+        assert math.isclose(sum(s["guclerin"]), 1.0, abs_tol=1e-9), xv
+
+
+def test_ornek3_koselerin_yerleri():
+    mu = _fan(28.0)["birlesik"]
+    for yk, beklenen in [(30, 0.0), (44, 0.7), (56, 0.7), (64, 0.3), (92.5, 0.3), (100, 0.0)]:
+        i = int(np.searchsorted(fan.Y, yk))
+        assert abs(mu[i] - beklenen) < 1e-3, (yk, mu[i])
+
+
+def test_ornek3_durulastirma_sonuclari():
+    beklenen = {
+        28.0: {"COA": 60.2970, "BOA": 56.2705, "MOM": 50.0, "SOM": 44.0, "LOM": 56.0},
+        33.0: {"COA": 70.2242, "BOA": 72.4375, "MOM": 75.0, "SOM": 70.0, "LOM": 80.0},
+    }
+    for x, sonuclar in beklenen.items():
+        s = _fan(x)
+        for yontem, deger in sonuclar.items():
+            assert abs(durulastir(fan.Y, s["birlesik"], yontem) - deger) < 2e-3, (x, yontem)
+
+
+def test_ornek3_alan():
+    # Birleşik kümenin alanı: x = 28 için 26,975; x = 33 için 28,1
+    for x, alan_beklenen in [(28.0, 26.975), (33.0, 28.1)]:
+        mu = _fan(x)["birlesik"]
+        alan = np.trapezoid(mu, fan.Y) if hasattr(np, "trapezoid") else np.trapz(mu, fan.Y)
+        assert abs(alan - alan_beklenen) < 1e-3, x
+
+
+def test_ornek3_elle_hesap_yardimcilari_motorla_ayni():
+    # fan_hizi_ornegi.py'nin kapalı formüllü köşe/alan hesabı, genel motorla aynı sonucu vermeli
+    for x, g1, g2 in [(28.0, 0.7, 0.3), (33.0, 0.2, 0.8)]:
+        egriler = []
+        for g, (a, b, c) in [(g1, fan.HIZ["Orta"]), (g2, fan.HIZ["Hızlı"])]:
+            egriler.append([(a, 0.0), (a + g * (b - a), g), (c - g * (c - b), g), (c, 0.0)])
+        V, _ = fan.zarf(egriler)
+        alan = sum(fan.parca(m, k, p, q)[0] for p, q, m, k in fan.dogru_parcalari(V))
+        mu = _fan(x)["birlesik"]
+        motor = np.trapezoid(mu, fan.Y) if hasattr(np, "trapezoid") else np.trapz(mu, fan.Y)
+        assert abs(alan - motor) < 1e-3, x
 
 
 # --------------------------------------------------------------------------
